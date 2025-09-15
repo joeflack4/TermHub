@@ -1,3 +1,4 @@
+-- concept_graph: direct parent/child relationships only
 DROP TABLE IF EXISTS {{schema}}concept_graph{{optional_suffix}} CASCADE;
 
 CREATE TABLE IF NOT EXISTS {{schema}}concept_graph{{optional_suffix}} AS (

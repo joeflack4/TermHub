@@ -1,4 +1,6 @@
 -- Table: concept_relationship_plus ------------------------------------------------------------------------------------
+-- Concept relationship table, with concept fields included, as well as counts for concep_id_1
+--
 -- takes a long time to build
 -- using concept_relationship_plus not just for convenience in debugging now but also
 -- single source of truth for concept_relationship in termhub. quit using concept_relationship

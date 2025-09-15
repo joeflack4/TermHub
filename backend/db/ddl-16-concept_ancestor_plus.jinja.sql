@@ -1,4 +1,7 @@
 -- Table: concept_ancestor_plus ------------------------------------------------------------------------------------
+-- Extend concept_ancestor with counts, as well as the depth of the ancestor+descendant pair (from the depth of the
+-- ancestor with respect to the root).
+
 -- Temp tables do not have {{optional_suffix}} for _new and _old becauser they do not get recreated during refreshes; they are temporary.
 CREATE TEMP TABLE root_concepts AS (
     SELECT ancestor_concept_id FROM {{schema}}concept_ancestor r WHERE min_levels_of_separation != 0
@@ -6,6 +9,7 @@ CREATE TEMP TABLE root_concepts AS (
     SELECT descendant_concept_id FROM {{schema}}concept_ancestor r WHERE min_levels_of_separation != 0
 );
 
+-- How deep in the hierarchy concepts are with respect to root(s)
 CREATE TEMP TABLE concept_depth AS (
     SELECT ca.descendant_concept_id, min(ca.min_levels_of_separation) AS depth
     /* from (SELECT * FROM concept_ancestor ca limit 100000) ca */
