@@ -24,19 +24,26 @@ CREATE SEQUENCE public.api_call_group_id_seq START 10001;
 
 DROP TABLE IF EXISTS public.apiruns_plus CASCADE;
 
+-- apiruns_plus: select from groups_broke_by_long_gap, from RankedGroups
+-- RankedGroups: Various aggregations & rankings for each group
 WITH RankedGroups AS (
         SELECT
             *,
             substring(client from '\d+\.\d+\.\d+') AS ip3, -- sometimes fourth ip part differs for same call session
+            -- rn: row number: numbering each request in each call group / session
             ROW_NUMBER() OVER (
                 PARTITION BY host, substring(client from '\d+\.\d+\.\d+'), api_call_group_id
                 ORDER BY timestamp::timestamp DESC) AS rn,
+            -- call_gap: how many seconds passed since last request
             EXTRACT(SECOND FROM timestamp::timestamp - (
                 lag(timestamp::timestamp) OVER (PARTITION by host, substring(client from '\d+\.\d+\.\d+'), api_call_group_id ORDER BY timestamp) +
                     lag(process_seconds) OVER (PARTITION by host, substring(client from '\d+\.\d+\.\d+'), api_call_group_id ORDER BY timestamp)
                     * INTERVAL '1 second')) AS call_gap,
+            -- week: the YYYY-MM-DD date for the Monday of the week in which the timestamp appeared
             date_bin('1 week', timestamp::TIMESTAMP, TIMESTAMP '2023-10-30')::date week,
             timestamp::date date,
+            -- new_group_flag: each row gets new_group_flag = 1 when there’s a >1s idle gap since the prior request
+            -- (i.e., likely a new group), otherwise 0. @siggie why 1s?
             CASE
               WHEN timestamp::timestamp - LAG(timestamp::timestamp) OVER
                   (PARTITION BY host, substring(client from '\d+\.\d+\.\d+'), api_call_group_id ORDER BY timestamp::timestamp) > INTERVAL '1 second' THEN 1
@@ -45,6 +52,8 @@ WITH RankedGroups AS (
 
         FROM public.api_runs
     ),
+--groups_broke_by_long_gap: adds group_id: comprised of the host, ip, call group, sub-group (differentiated by >1sec
+-- gaps)
 groups_broke_by_long_gap AS (
   SELECT *,
     host || '-' || ip3 || '-' || COALESCE(api_call_group_id::text, 'no_call_grp') || '-' ||
@@ -57,20 +66,21 @@ groups_broke_by_long_gap AS (
 )
 SELECT *,
       ROW_NUMBER() OVER(PARTITION BY group_id ORDER BY timestamp) AS rownum,
-      COUNT(*) OVER(PARTITION BY group_id) AS grouprows
+      COUNT(*) OVER(PARTITION BY group_id) AS grouprows  -- adds up how many rows in each group; included in every row
 INTO public.apiruns_plus FROM groups_broke_by_long_gap;
 
 CREATE INDEX aprpidx ON apiruns_plus (group_id );
 
 DROP TABLE IF EXISTS public.apiruns_grouped CASCADE;
 
+-- apiruns_grouped: add duration and concat api calls
 SELECT
     group_id,
     /*
     codeset_ids,
     params,
     */
-    ARRAY_SORT(ARRAY_AGG(api_call)) AS api_calls,
+    ARRAY_SORT(ARRAY_AGG(api_call)) AS api_calls,  -- concat all api calls in the group
     MIN(timestamp::timestamp) as group_start_time,
     MAX(timestamp::timestamp) as group_end_time,
     (MAX(timestamp::timestamp) - MIN(timestamp::timestamp)) +
